@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ruvic-azure-monitor-connector"
+version = "1.0.0"
+description = "Conector Ruvic de solo lectura para Azure Monitor (métricas y alertas)"
+requires-python = ">=3.10"
+dependencies = [
+    "azure-identity>=1.15,<2.0",
+    "azure-mgmt-monitor>=6.0,<7.0",
+    "azure-mgmt-alertsmanagement>=1.0,<2.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["ruvic_azure_monitor_connector*"]

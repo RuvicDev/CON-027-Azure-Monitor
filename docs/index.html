@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title data-i18n="doc_title">Conector Azure Monitor — Ruvic</title>
+  <link rel="stylesheet" href="assets/ruvic.css">
+</head>
+<body class="guide">
+  <main class="ruvic-container">
+
+    <nav class="ruvic-toc" aria-label="Índice">
+      <h2 data-i18n="toc_title">Contenido</h2>
+      <ol>
+        <li><a href="#que-es" data-i18n="toc.que_es">¿Qué es y para qué sirve?</a></li>
+        <li><a href="#prerrequisitos" data-i18n="toc.prerrequisitos">Prerrequisitos</a></li>
+        <li><a href="#configuracion-fabricante" data-i18n="toc.configuracion_fabricante">Configuración en el fabricante</a></li>
+        <li><a href="#permisos" data-i18n="toc.permisos">Permisos requeridos</a></li>
+        <li><a href="#configuracion-ruvic" data-i18n="toc.configuracion_ruvic">Configuración en Ruvic</a></li>
+        <li><a href="#verificacion" data-i18n="toc.verificacion">Verificación</a></li>
+        <li><a href="#solucion-problemas" data-i18n="toc.solucion_problemas">Solución de problemas</a></li>
+        <li><a href="#faq-seguridad" data-i18n="toc.faq_seguridad">Preguntas frecuentes y notas de seguridad</a></li>
+      </ol>
+    </nav>
+
+    <h1 data-i18n="guide_title">Azure Monitor</h1>
+    <p class="guide-updated">{{ULTIMA_ACTUALIZACION}}</p>
+
+    <!-- ============ 1. QUÉ ES ============ -->
+    <section>
+      <h2 id="que-es" data-i18n="section.que_es">¿Qué es y para qué sirve?</h2>
+      <p data-i18n="que_es.body">El conector Azure Monitor permite que el agente de Ruvic consulte métricas y alertas de tus recursos en Azure, <strong>en modo solo lectura</strong>. Una vez configurado, puedes pedirle al agente cosas como:</p>
+      <ul>
+        <li data-i18n="que_es.ej1">“¿Cómo ha estado el uso de CPU de mi máquina virtual en las últimas 6 horas?”</li>
+        <li data-i18n="que_es.ej2">“¿Hay alguna alerta activa en mi suscripción de Azure ahora mismo?”</li>
+        <li data-i18n="que_es.ej3">“Revisa las transacciones de mi cuenta de almacenamiento del último día.”</li>
+      </ul>
+      <p data-i18n="que_es.ops">Operaciones soportadas:</p>
+      <table>
+        <thead>
+          <tr>
+            <th data-i18n="table.operacion">Operación</th>
+            <th data-i18n="table.que_hace">Qué hace</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>monitor.get_metrics</code></td>
+            <td data-i18n="ops.metrics">Consulta los datapoints de una métrica de un recurso específico</td>
+          </tr>
+          <tr>
+            <td><code>monitor.list_active_alerts</code></td>
+            <td data-i18n="ops.alerts">Lista las alertas que están actualmente activas en la suscripción</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout callout-info">
+        <span class="callout-title" data-i18n="que_es.callout.title">Solo lectura, por diseño</span>
+        <span data-i18n="que_es.callout.body">El conector nunca crea, modifica ni elimina reglas de alerta, métricas o recursos: solo consulta. El Service Principal recomendado solo tiene el rol Monitoring Reader.</span>
+      </div>
+    </section>
+
+    <!-- ============ 2. PRERREQUISITOS ============ -->
+    <section>
+      <h2 id="prerrequisitos" data-i18n="section.prerrequisitos">Prerrequisitos</h2>
+      <ul>
+        <li data-i18n="prer.cuenta">Una suscripción de <strong>Azure</strong> con recursos que ya generen métricas o alertas.</li>
+        <li data-i18n="prer.admin">Acceso a <strong>Azure AD</strong> (o al Azure CLI) para crear un Service Principal, solo durante la configuración inicial.</li>
+        <li data-i18n="prer.datos">El ID de la suscripción de Azure a monitorear.</li>
+      </ul>
+    </section>
+
+    <!-- ============ 3. CONFIGURACIÓN EN EL FABRICANTE ============ -->
+    <section>
+      <h2 id="configuracion-fabricante" data-i18n="section.configuracion_fabricante">Configuración en el fabricante</h2>
+      <p data-i18n="fab.intro">Vas a crear un <strong>Service Principal dedicado de solo lectura</strong> para Ruvic. No reutilices una cuenta de usuario ni credenciales de otra aplicación.</p>
+      <ol class="ruvic-steps">
+        <li>
+          <strong data-i18n="fab.p1.t">Crea el Service Principal con el rol Monitoring Reader.</strong>
+          <p data-i18n="fab.p1.b">Con Azure CLI autenticado como administrador:</p>
+<pre><code>az ad sp create-for-rbac --name "ruvic-monitor-reader" \
+  --role "Monitoring Reader" \
+  --scopes "/subscriptions/TU_SUBSCRIPTION_ID"</code></pre>
+          <div class="callout callout-info">
+            <span class="callout-title" data-i18n="fab.p1.note.title">Nota</span>
+            <span data-i18n="fab.p1.note.body">Para limitar el alcance a solo un grupo de recursos en vez de toda la suscripción, cambia --scopes a "/subscriptions/TU_SUB/resourceGroups/TU_GRUPO".</span>
+          </div>
+        </li>
+        <li>
+          <strong data-i18n="fab.p2.t">Copia las credenciales generadas.</strong>
+          <p data-i18n="fab.p2.b">El comando anterior imprime un JSON con <code>appId</code> (Client ID), <code>password</code> (Client Secret) y <code>tenant</code> (Tenant ID). Guárdalos: el Client Secret solo se muestra una vez.</p>
+          <div class="screenshot-placeholder" data-i18n="fab.p2.img">[ Captura: salida de az ad sp create-for-rbac con las credenciales — reemplazar por assets/img/azure-monitor-sp.png ]</div>
+        </li>
+        <li>
+          <strong data-i18n="fab.p3.t">Verifica el acceso desde la línea de comandos.</strong>
+          <p data-i18n="fab.p3.b">Inicia sesión con el Service Principal y consulta las alertas de la suscripción:</p>
+<pre><code>az login --service-principal -u TU_CLIENT_ID -p TU_CLIENT_SECRET --tenant TU_TENANT_ID
+az monitor metrics alert list --output table</code></pre>
+          <p data-i18n="fab.p3.result">Si responde sin error de permisos (aunque no haya alertas), el fabricante quedó listo. Anota estos valores para la siguiente sección: Tenant ID, Client ID, Client Secret y Subscription ID.</p>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ============ 4. PERMISOS ============ -->
+    <section>
+      <h2 id="permisos" data-i18n="section.permisos">Permisos requeridos</h2>
+      <p data-i18n="perm.intro">Principio de mínimo privilegio: el Service Principal de Ruvic solo necesita el rol <code>Monitoring Reader</code>. No otorgues <code>Monitoring Contributor</code>, <code>Contributor</code> ni <code>Owner</code>.</p>
+      <table>
+        <thead>
+          <tr>
+            <th data-i18n="table.permiso">Rol RBAC</th>
+            <th data-i18n="table.para_que">Para qué sirve</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Monitoring Reader</code></td>
+            <td data-i18n="perm.reader.body">Consultar métricas (<code>monitor.get_metrics</code>) y listar alertas activas (<code>monitor.list_active_alerts</code>). Rol 100% de solo lectura.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ============ 5. CONFIGURACIÓN EN RUVIC ============ -->
+    <section>
+      <h2 id="configuracion-ruvic" data-i18n="section.configuracion_ruvic">Configuración en Ruvic</h2>
+      <p data-i18n="ruvic.intro">Entra a <strong>Settings → Conectores</strong>, busca la tarjeta <strong>Azure Monitor</strong> y pulsa <strong>Configurar</strong>. Diligencia el formulario con los valores que obtuviste en la sección anterior:</p>
+      <table>
+        <thead>
+          <tr>
+            <th data-i18n="table.campo">Campo del formulario</th>
+            <th data-i18n="table.valor">Valor</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td data-i18n="ruvic.f.tenant">Tenant ID</td>
+            <td data-i18n="ruvic.v.tenant">El tenant del paso 2</td>
+          </tr>
+          <tr>
+            <td data-i18n="ruvic.f.client">Client ID (Application ID)</td>
+            <td data-i18n="ruvic.v.client">El appId del paso 2</td>
+          </tr>
+          <tr>
+            <td data-i18n="ruvic.f.secret">Client Secret</td>
+            <td data-i18n="ruvic.v.secret">El password del paso 2. Se guarda cifrado como secreto: la interfaz no volverá a mostrarlo</td>
+          </tr>
+          <tr>
+            <td data-i18n="ruvic.f.sub">Subscription ID</td>
+            <td data-i18n="ruvic.v.sub">El ID de la suscripción a monitorear</td>
+          </tr>
+          <tr>
+            <td data-i18n="ruvic.f.timeout">Timeout de conexión</td>
+            <td data-i18n="ruvic.v.timeout">Opcional; <code>10</code> segundos por defecto</td>
+          </tr>
+        </tbody>
+      </table>
+      <p data-i18n="ruvic.save">Guarda y pulsa <span class="ruvic-button">Probar conexión</span> — la plataforma verificará que el Service Principal pueda autenticarse.</p>
+      <div class="screenshot-placeholder" data-i18n="ruvic.img">[ Captura: formulario del conector Azure Monitor en Settings → Conectores — reemplazar por assets/img/azure-monitor-form.png ]</div>
+    </section>
+
+    <!-- ============ 6. VERIFICACIÓN ============ -->
+    <section>
+      <h2 id="verificacion" data-i18n="section.verificacion">Verificación</h2>
+      <ol class="ruvic-steps">
+        <li>
+          <strong data-i18n="ver.p1.t">Test de conexión exitoso.</strong>
+          <p data-i18n="ver.p1.b">El botón <em>Probar conexión</em> debe responder: <em>“Conexión exitosa a Azure Monitor (suscripción ...)”</em>. La tarjeta del conector cambia a estado <strong>Configurado</strong>.</p>
+        </li>
+        <li>
+          <strong data-i18n="ver.p2.t">Automatización mínima de prueba.</strong>
+          <p data-i18n="ver.p2.b">Abre una conversación nueva con el agente y pídele: <em>“¿Hay alguna alerta activa en Azure Monitor en este momento?”</em> El agente debe responder con el listado real de alertas (o confirmar que no hay ninguna). Si lo hace, el conector quedó operativo de punta a punta.</p>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ============ 7. SOLUCIÓN DE PROBLEMAS ============ -->
+    <section>
+      <h2 id="solucion-problemas" data-i18n="section.solucion_problemas">Solución de problemas</h2>
+      <table>
+        <thead>
+          <tr>
+            <th data-i18n="table.sintoma">Mensaje / síntoma</th>
+            <th data-i18n="table.causa">Causa probable y solución</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td data-i18n="prob.s1">“Credenciales inválidas o el Service Principal no tiene permiso suficiente”</td>
+            <td data-i18n="prob.c1">Client ID, Client Secret o Tenant ID mal copiados, o falta el rol Monitoring Reader. Reintenta los pasos 1 y 2 de la sección 3.</td>
+          </tr>
+          <tr>
+            <td data-i18n="prob.s2">“No se pudo conectar a Azure AD … (timeout)”</td>
+            <td data-i18n="prob.c2">Tenant ID incorrecto, o hay un problema de red saliente hacia Azure.</td>
+          </tr>
+          <tr>
+            <td data-i18n="prob.s3">“No se encontró el recurso o la métrica”</td>
+            <td data-i18n="prob.c3">El resource_id no es el ARM resource ID completo, o el nombre de la métrica no aplica a ese tipo de recurso. Verifica con <code>az resource show --ids TU_RESOURCE_ID</code>.</td>
+          </tr>
+          <tr>
+            <td data-i18n="prob.s4">get_metric_data devuelve una lista vacía</td>
+            <td data-i18n="prob.c4">No es necesariamente un error: puede significar que no hubo actividad en ese rango de tiempo. Verifica el nombre exacto de la métrica en el Azure Portal → recurso → Métricas.</td>
+          </tr>
+          <tr>
+            <td data-i18n="prob.s5">El conector aparece “Sin configurar” tras guardar</td>
+            <td data-i18n="prob.c5">Algún campo obligatorio quedó vacío. Ábrelo de nuevo y completa Tenant ID, Client ID, Client Secret y Subscription ID.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ============ 8. FAQ Y SEGURIDAD ============ -->
+    <section>
+      <h2 id="faq-seguridad" data-i18n="section.faq_seguridad">Preguntas frecuentes y notas de seguridad</h2>
+
+      <h3 data-i18n="faq.q1">¿El agente puede crear o modificar reglas de alerta?</h3>
+      <p data-i18n="faq.a1">No. El conector nunca llama a operaciones de escritura, y el Service Principal solo tiene el rol Monitoring Reader (solo lectura).</p>
+
+      <h3 data-i18n="faq.q2">¿Dónde queda guardado el Client Secret?</h3>
+      <p data-i18n="faq.a2">Como secreto en el almacén de credenciales de la plataforma, asociado a tu usuario. La interfaz nunca vuelve a mostrarlo; solo indica “definida”. Para cambiarlo, escribe uno nuevo en el formulario; para conservarlo al editar otros campos, deja el campo vacío.</p>
+
+      <h3 data-i18n="faq.q3">Rotación de credenciales</h3>
+      <p data-i18n="faq.a3">Recomendado cada 90 días o según tu política: genera un nuevo Client Secret en Azure AD → App Registration → "Certificates & secrets", actualízalo en el formulario del conector, prueba la conexión, y luego elimina el secreto anterior.</p>
+
+      <h3 data-i18n="faq.q4">¿Qué hago si las credenciales se comprometen?</h3>
+      <ol>
+        <li data-i18n="faq.a4.li1">Elimina el Client Secret comprometido de inmediato en Azure AD → App Registration → "Certificates & secrets".</li>
+        <li data-i18n="faq.a4.li2">Revisa la actividad reciente del Service Principal en Azure AD → Sign-in logs.</li>
+        <li data-i18n="faq.a4.li3">Genera un Client Secret nuevo y actualízalo en el formulario del conector.</li>
+      </ol>
+
+      <h3 data-i18n="faq.q5">¿Expiran las credenciales?</h3>
+      <p data-i18n="faq.a5">Sí — los Client Secrets de Azure AD tienen fecha de expiración definida al crearlos (por defecto 6-24 meses según el método usado). Configura un recordatorio para renovarlo antes de esa fecha, o el conector dejará de funcionar.</p>
+
+      <div class="callout callout-warning">
+        <span class="callout-title" data-i18n="faq.bp.title">Buenas prácticas</span>
+        <span data-i18n="faq.bp.body">Usa siempre un Service Principal dedicado con el rol Monitoring Reader; restringe el scope a un grupo de recursos específico si solo necesitas monitorear ciertos recursos; anota la fecha de expiración del Client Secret; y evita compartir las credenciales por canales no seguros.</span>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const I18N = {
+      es: {
+        doc_title: "Conector Azure Monitor — Ruvic",
+        toc_title: "Contenido",
+        "toc.que_es": "¿Qué es y para qué sirve?",
+        "toc.prerrequisitos": "Prerrequisitos",
+        "toc.configuracion_fabricante": "Configuración en el fabricante",
+        "toc.permisos": "Permisos requeridos",
+        "toc.configuracion_ruvic": "Configuración en Ruvic",
+        "toc.verificacion": "Verificación",
+        "toc.solucion_problemas": "Solución de problemas",
+        "toc.faq_seguridad": "Preguntas frecuentes y notas de seguridad",
+        guide_title: "Azure Monitor",
+        "section.que_es": "¿Qué es y para qué sirve?",
+        "que_es.body": "El conector Azure Monitor permite que el agente de Ruvic consulte métricas y alertas de tus recursos en Azure, en modo solo lectura. Una vez configurado, puedes pedirle al agente cosas como:",
+        "que_es.ej1": "“¿Cómo ha estado el uso de CPU de mi máquina virtual en las últimas 6 horas?”",
+        "que_es.ej2": "“¿Hay alguna alerta activa en mi suscripción de Azure ahora mismo?”",
+        "que_es.ej3": "“Revisa las transacciones de mi cuenta de almacenamiento del último día.”",
+        "que_es.ops": "Operaciones soportadas:",
+        "table.operacion": "Operación",
+        "table.que_hace": "Qué hace",
+        "ops.metrics": "Consulta los datapoints de una métrica de un recurso específico",
+        "ops.alerts": "Lista las alertas que están actualmente activas en la suscripción",
+        "que_es.callout.title": "Solo lectura, por diseño",
+        "que_es.callout.body": "El conector nunca crea, modifica ni elimina reglas de alerta, métricas o recursos: solo consulta. El Service Principal recomendado solo tiene el rol Monitoring Reader.",
+        "section.prerrequisitos": "Prerrequisitos",
+        "prer.cuenta": "Una suscripción de Azure con recursos que ya generen métricas o alertas.",
+        "prer.admin": "Acceso a Azure AD (o al Azure CLI) para crear un Service Principal, solo durante la configuración inicial.",
+        "prer.datos": "El ID de la suscripción de Azure a monitorear.",
+        "section.configuracion_fabricante": "Configuración en el fabricante",
+        "fab.intro": "Vas a crear un Service Principal dedicado de solo lectura para Ruvic. No reutilices una cuenta de usuario ni credenciales de otra aplicación.",
+        "fab.p1.t": "Crea el Service Principal con el rol Monitoring Reader.",
+        "fab.p1.b": "Con Azure CLI autenticado como administrador:",
+        "fab.p1.note.title": "Nota",
+        "fab.p1.note.body": "Para limitar el alcance a solo un grupo de recursos en vez de toda la suscripción, cambia --scopes a \"/subscriptions/TU_SUB/resourceGroups/TU_GRUPO\".",
+        "fab.p2.t": "Copia las credenciales generadas.",
+        "fab.p2.b": "El comando anterior imprime un JSON con appId (Client ID), password (Client Secret) y tenant (Tenant ID). Guárdalos: el Client Secret solo se muestra una vez.",
+        "fab.p2.img": "[ Captura: salida de az ad sp create-for-rbac con las credenciales — reemplazar por assets/img/azure-monitor-sp.png ]",
+        "fab.p3.t": "Verifica el acceso desde la línea de comandos.",
+        "fab.p3.b": "Inicia sesión con el Service Principal y consulta las alertas de la suscripción:",
+        "fab.p3.result": "Si responde sin error de permisos (aunque no haya alertas), el fabricante quedó listo. Anota estos valores para la siguiente sección: Tenant ID, Client ID, Client Secret y Subscription ID.",
+        "section.permisos": "Permisos requeridos",
+        "perm.intro": "Principio de mínimo privilegio: el Service Principal de Ruvic solo necesita el rol Monitoring Reader. No otorgues Monitoring Contributor, Contributor ni Owner.",
+        "table.permiso": "Rol RBAC",
+        "table.para_que": "Para qué sirve",
+        "perm.reader.body": "Consultar métricas (monitor.get_metrics) y listar alertas activas (monitor.list_active_alerts). Rol 100% de solo lectura.",
+        "section.configuracion_ruvic": "Configuración en Ruvic",
+        "ruvic.intro": "Entra a Settings → Conectores, busca la tarjeta Azure Monitor y pulsa Configurar. Diligencia el formulario con los valores que obtuviste en la sección anterior:",
+        "table.campo": "Campo del formulario",
+        "table.valor": "Valor",
+        "ruvic.f.tenant": "Tenant ID",
+        "ruvic.v.tenant": "El tenant del paso 2",
+        "ruvic.f.client": "Client ID (Application ID)",
+        "ruvic.v.client": "El appId del paso 2",
+        "ruvic.f.secret": "Client Secret",
+        "ruvic.v.secret": "El password del paso 2. Se guarda cifrado como secreto: la interfaz no volverá a mostrarlo",
+        "ruvic.f.sub": "Subscription ID",
+        "ruvic.v.sub": "El ID de la suscripción a monitorear",
+        "ruvic.f.timeout": "Timeout de conexión",
+        "ruvic.v.timeout": "Opcional; 10 segundos por defecto",
+        "ruvic.save": "Guarda y pulsa Probar conexión — la plataforma verificará que el Service Principal pueda autenticarse.",
+        "ruvic.img": "[ Captura: formulario del conector Azure Monitor en Settings → Conectores — reemplazar por assets/img/azure-monitor-form.png ]",
+        "section.verificacion": "Verificación",
+        "ver.p1.t": "Test de conexión exitoso.",
+        "ver.p1.b": "El botón Probar conexión debe responder: “Conexión exitosa a Azure Monitor (suscripción ...)”. La tarjeta del conector cambia a estado Configurado.",
+        "ver.p2.t": "Automatización mínima de prueba.",
+        "ver.p2.b": "Abre una conversación nueva con el agente y pídele: “¿Hay alguna alerta activa en Azure Monitor en este momento?” El agente debe responder con el listado real de alertas (o confirmar que no hay ninguna). Si lo hace, el conector quedó operativo de punta a punta.",
+        "section.solucion_problemas": "Solución de problemas",
+        "table.sintoma": "Mensaje / síntoma",
+        "table.causa": "Causa probable y solución",
+        "prob.s1": "“Credenciales inválidas o el Service Principal no tiene permiso suficiente”",
+        "prob.c1": "Client ID, Client Secret o Tenant ID mal copiados, o falta el rol Monitoring Reader. Reintenta los pasos 1 y 2 de la sección 3.",
+        "prob.s2": "“No se pudo conectar a Azure AD … (timeout)”",
+        "prob.c2": "Tenant ID incorrecto, o hay un problema de red saliente hacia Azure.",
+        "prob.s3": "“No se encontró el recurso o la métrica”",
+        "prob.c3": "El resource_id no es el ARM resource ID completo, o el nombre de la métrica no aplica a ese tipo de recurso. Verifica con az resource show --ids TU_RESOURCE_ID.",
+        "prob.s4": "get_metric_data devuelve una lista vacía",
+        "prob.c4": "No es necesariamente un error: puede significar que no hubo actividad en ese rango de tiempo. Verifica el nombre exacto de la métrica en el Azure Portal → recurso → Métricas.",
+        "prob.s5": "El conector aparece “Sin configurar” tras guardar",
+        "prob.c5": "Algún campo obligatorio quedó vacío. Ábrelo de nuevo y completa Tenant ID, Client ID, Client Secret y Subscription ID.",
+        "section.faq_seguridad": "Preguntas frecuentes y notas de seguridad",
+        "faq.q1": "¿El agente puede crear o modificar reglas de alerta?",
+        "faq.a1": "No. El conector nunca llama a operaciones de escritura, y el Service Principal solo tiene el rol Monitoring Reader (solo lectura).",
+        "faq.q2": "¿Dónde queda guardado el Client Secret?",
+        "faq.a2": "Como secreto en el almacén de credenciales de la plataforma, asociado a tu usuario. La interfaz nunca vuelve a mostrarlo; solo indica “definida”. Para cambiarlo, escribe uno nuevo en el formulario; para conservarlo al editar otros campos, deja el campo vacío.",
+        "faq.q3": "Rotación de credenciales",
+        "faq.a3": "Recomendado cada 90 días o según tu política: genera un nuevo Client Secret en Azure AD → App Registration → \"Certificates & secrets\", actualízalo en el formulario del conector, prueba la conexión, y luego elimina el secreto anterior.",
+        "faq.q4": "¿Qué hago si las credenciales se comprometen?",
+        "faq.a4.li1": "Elimina el Client Secret comprometido de inmediato en Azure AD → App Registration → \"Certificates & secrets\".",
+        "faq.a4.li2": "Revisa la actividad reciente del Service Principal en Azure AD → Sign-in logs.",
+        "faq.a4.li3": "Genera un Client Secret nuevo y actualízalo en el formulario del conector.",
+        "faq.q5": "¿Expiran las credenciales?",
+        "faq.a5": "Sí — los Client Secrets de Azure AD tienen fecha de expiración definida al crearlos (por defecto 6-24 meses según el método usado). Configura un recordatorio para renovarlo antes de esa fecha, o el conector dejará de funcionar.",
+        "faq.bp.title": "Buenas prácticas",
+        "faq.bp.body": "Usa siempre un Service Principal dedicado con el rol Monitoring Reader; restringe el scope a un grupo de recursos específico si solo necesitas monitorear ciertos recursos; anota la fecha de expiración del Client Secret; y evita compartir las credenciales por canales no seguros.",
+      },
+      en: {
+        doc_title: "Azure Monitor Connector — Ruvic",
+        toc_title: "Contents",
+        "toc.que_es": "What it is and what it’s for",
+        "toc.prerrequisitos": "Prerequisites",
+        "toc.configuracion_fabricante": "Vendor / provider setup",
+        "toc.permisos": "Required permissions",
+        "toc.configuracion_ruvic": "Configuration in Ruvic",
+        "toc.verificacion": "Verification",
+        "toc.solucion_problemas": "Troubleshooting",
+        "toc.faq_seguridad": "FAQ and security notes",
+        guide_title: "Azure Monitor",
+        "section.que_es": "What it is and what it’s for",
+        "que_es.body": "The Azure Monitor connector lets the Ruvic agent query metrics and alerts for your Azure resources, in read-only mode. Once configured, you can ask the agent things like:",
+        "que_es.ej1": "“How has CPU usage looked for my virtual machine in the last 6 hours?”",
+        "que_es.ej2": "“Is there any active alert in my Azure subscription right now?”",
+        "que_es.ej3": "“Check my storage account's transactions from the last day.”",
+        "que_es.ops": "Supported operations:",
+        "table.operacion": "Operation",
+        "table.que_hace": "What it does",
+        "ops.metrics": "Queries the datapoints of a specific resource's metric",
+        "ops.alerts": "Lists the alerts currently active in the subscription",
+        "que_es.callout.title": "Read-only by design",
+        "que_es.callout.body": "The connector never creates, modifies or deletes alert rules, metrics or resources: it only queries. The recommended Service Principal only has the Monitoring Reader role.",
+        "section.prerrequisitos": "Prerequisites",
+        "prer.cuenta": "An Azure subscription with resources that already generate metrics or alerts.",
+        "prer.admin": "Access to Azure AD (or the Azure CLI) to create a Service Principal, only during initial setup.",
+        "prer.datos": "The Azure subscription ID to monitor.",
+        "section.configuracion_fabricante": "Vendor / provider setup",
+        "fab.intro": "You will create a dedicated read-only Service Principal for Ruvic. Do not reuse a user account or another application's credentials.",
+        "fab.p1.t": "Create the Service Principal with the Monitoring Reader role.",
+        "fab.p1.b": "With Azure CLI authenticated as an administrator:",
+        "fab.p1.note.title": "Note",
+        "fab.p1.note.body": "To limit the scope to just a resource group instead of the whole subscription, change --scopes to \"/subscriptions/YOUR_SUB/resourceGroups/YOUR_GROUP\".",
+        "fab.p2.t": "Copy the generated credentials.",
+        "fab.p2.b": "The command above prints a JSON with appId (Client ID), password (Client Secret) and tenant (Tenant ID). Save them: the Client Secret is shown only once.",
+        "fab.p2.img": "[ Screenshot: output of az ad sp create-for-rbac with the credentials — replace with assets/img/azure-monitor-sp.png ]",
+        "fab.p3.t": "Verify access from the command line.",
+        "fab.p3.b": "Sign in with the Service Principal and query the subscription's alerts:",
+        "fab.p3.result": "If it responds without a permission error (even with no alerts), the vendor side is ready. Write down these values for the next section: Tenant ID, Client ID, Client Secret and Subscription ID.",
+        "section.permisos": "Required permissions",
+        "perm.intro": "Least-privilege principle: the Ruvic Service Principal only needs the Monitoring Reader role. Do not grant Monitoring Contributor, Contributor, or Owner.",
+        "table.permiso": "RBAC role",
+        "table.para_que": "Why it's needed",
+        "perm.reader.body": "Query metrics (monitor.get_metrics) and list active alerts (monitor.list_active_alerts). A fully read-only role.",
+        "section.configuracion_ruvic": "Configuration in Ruvic",
+        "ruvic.intro": "Go to Settings → Connectors, find the Azure Monitor card and click Configure. Fill in the form with the values from the previous section:",
+        "table.campo": "Form field",
+        "table.valor": "Value",
+        "ruvic.f.tenant": "Tenant ID",
+        "ruvic.v.tenant": "The tenant from step 2",
+        "ruvic.f.client": "Client ID (Application ID)",
+        "ruvic.v.client": "The appId from step 2",
+        "ruvic.f.secret": "Client Secret",
+        "ruvic.v.secret": "The password from step 2. Stored encrypted as a secret: the UI will never display it again",
+        "ruvic.f.sub": "Subscription ID",
+        "ruvic.v.sub": "The subscription ID to monitor",
+        "ruvic.f.timeout": "Connection timeout",
+        "ruvic.v.timeout": "Optional; defaults to 10 seconds",
+        "ruvic.save": "Save and click Test connection — the platform will verify the Service Principal can authenticate.",
+        "ruvic.img": "[ Screenshot: Azure Monitor connector form in Settings → Connectors — replace with assets/img/azure-monitor-form.png ]",
+        "section.verificacion": "Verification",
+        "ver.p1.t": "Successful connection test.",
+        "ver.p1.b": "The Test connection button should return: “Successful connection to Azure Monitor (subscription ...)”. The connector card switches to Configured.",
+        "ver.p2.t": "Minimal test automation.",
+        "ver.p2.b": "Open a new conversation with the agent and ask: “Is there any active alert in Azure Monitor right now?” The agent should reply with the actual alert list (or confirm there are none). If it does, the connector is fully operational.",
+        "section.solucion_problemas": "Troubleshooting",
+        "table.sintoma": "Message / symptom",
+        "table.causa": "Likely cause and fix",
+        "prob.s1": "“Invalid credentials or the Service Principal lacks sufficient permission”",
+        "prob.c1": "Mistyped Client ID, Client Secret or Tenant ID, or the Monitoring Reader role is missing. Redo steps 1 and 2 of section 3.",
+        "prob.s2": "“Could not connect to Azure AD … (timeout)”",
+        "prob.c2": "Incorrect Tenant ID, or there's an outbound network issue toward Azure.",
+        "prob.s3": "“Resource or metric not found”",
+        "prob.c3": "The resource_id isn't the full ARM resource ID, or the metric name doesn't apply to that resource type. Verify with az resource show --ids YOUR_RESOURCE_ID.",
+        "prob.s4": "get_metric_data returns an empty list",
+        "prob.c4": "Not necessarily an error: it may mean there was no activity in that time range. Verify the exact metric name in the Azure Portal → resource → Metrics.",
+        "prob.s5": "Connector shows “Not configured” after saving",
+        "prob.c5": "A required field was left empty. Open it again and fill in Tenant ID, Client ID, Client Secret and Subscription ID.",
+        "section.faq_seguridad": "FAQ and security notes",
+        "faq.q1": "Can the agent create or modify alert rules?",
+        "faq.a1": "No. The connector never calls write operations, and the Service Principal only has the Monitoring Reader role (read-only).",
+        "faq.q2": "Where is the Client Secret stored?",
+        "faq.a2": "As a secret in the platform's credential store, tied to your user. The UI never displays it again; it only shows “set”. To change it, type a new one in the form; to keep it while editing other fields, leave the field empty.",
+        "faq.q3": "Credential rotation",
+        "faq.a3": "Recommended every 90 days or per your policy: generate a new Client Secret in Azure AD → App Registration → \"Certificates & secrets\", update it in the connector form, test the connection, then delete the old secret.",
+        "faq.q4": "What if the credentials are compromised?",
+        "faq.a4.li1": "Delete the compromised Client Secret immediately in Azure AD → App Registration → \"Certificates & secrets\".",
+        "faq.a4.li2": "Review the Service Principal's recent activity in Azure AD → Sign-in logs.",
+        "faq.a4.li3": "Generate a new Client Secret and update it in the connector form.",
+        "faq.q5": "Do the credentials expire?",
+        "faq.a5": "Yes — Azure AD Client Secrets have an expiration date set when created (default 6-24 months depending on the method used). Set a reminder to renew it before that date, or the connector will stop working.",
+        "faq.bp.title": "Best practices",
+        "faq.bp.body": "Always use a dedicated Service Principal with the Monitoring Reader role; restrict the scope to a specific resource group if you only need to monitor certain resources; note the Client Secret's expiration date; and never share the credentials over insecure channels.",
+      },
+    };
+    /* El portal aplica el idioma del usuario (localStorage ruvic-docs-lang)
+       y actualiza [data-i18n], [data-i18n-placeholder] y [data-i18n-alt]. */
+  </script>
+</body>
+</html>

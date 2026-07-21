@@ -1,0 +1,67 @@
+{
+  "id": "azure_monitor",
+  "name": "Azure Monitor",
+  "name_en": "Azure Monitor",
+  "version": "1.0.0",
+  "description": "Consulta de métricas y alertas en Azure: consultar métricas de un recurso y listar alertas activas",
+  "description_en": "Query metrics and alerts in Azure: query a resource's metrics and list active alerts",
+  "icon": "icon.svg",
+  "category": "cloud",
+  "category_en": "cloud",
+  "keywords": ["azure", "monitor", "microsoft", "métricas", "metrics", "alertas", "alerts", "cloud", "nube", "monitoreo", "monitoring"],
+  "library": {
+    "package": "ruvic-azure-monitor-connector",
+    "install": "pip install git+https://github.com/Dgirto/Azure-Monitor.git#subdirectory=lib",
+    "import_name": "ruvic_azure_monitor_connector"
+  },
+  "auth_modes": [
+    {
+      "id": "service_principal",
+      "label": "Service Principal (Azure AD)",
+      "fields": [
+        {
+          "key": "tenant_id",
+          "label": "Tenant ID",
+          "type": "text",
+          "required": true,
+          "placeholder": "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "key": "client_id",
+          "label": "Client ID (Application ID)",
+          "type": "text",
+          "required": true,
+          "placeholder": "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "key": "client_secret",
+          "label": "Client Secret",
+          "type": "password",
+          "secret": true,
+          "required": true
+        },
+        {
+          "key": "subscription_id",
+          "label": "Subscription ID",
+          "type": "text",
+          "required": true,
+          "placeholder": "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "key": "connect_timeout",
+          "label": "Timeout de conexión (segundos)",
+          "type": "number",
+          "required": false,
+          "default": "10"
+        }
+      ]
+    }
+  ],
+  "env_prefix": "RUVIC_AZURE_MONITOR_",
+  "operations": ["monitor.get_metrics", "monitor.list_active_alerts"],
+  "test_connection": true,
+  "docs": {
+    "skill": "SKILL.md",
+    "permissions_note": "El Service Principal necesita el rol RBAC 'Monitoring Reader' sobre la suscripción (o sobre los grupos de recursos específicos a monitorear). Todas las operaciones son de solo lectura; no se requiere el rol 'Monitoring Contributor' ni permisos de escritura."
+  }
+}
