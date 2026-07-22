@@ -165,7 +165,10 @@ class AzureMonitorClient:
         now = datetime.now(timezone.utc)
         end_time = end_time or now
         start_time = start_time or (end_time - timedelta(hours=1))
-        timespan = f"{start_time.isoformat()}/{end_time.isoformat()}"
+        def _iso_z(dt: datetime) -> str:
+            return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+        timespan = f"{_iso_z(start_time)}/{_iso_z(end_time)}"
 
         client = self._get_monitor_client()
         try:
