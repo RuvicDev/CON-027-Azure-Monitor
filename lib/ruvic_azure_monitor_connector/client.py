@@ -35,6 +35,15 @@ from .exceptions import (
 from .logging_utils import get_logger
 
 _MAX_ALERT_LIMIT = 200
+_VALID_AGGREGATIONS = {"Average", "Total", "Minimum", "Maximum", "Count"}
+
+
+def _validate_limit(limit: Any) -> int:
+    if isinstance(limit, bool) or not isinstance(limit, int):
+        raise AzureMonitorDataError(f"limit debe ser un entero, no {type(limit).__name__}.")
+    if not 1 <= limit <= _MAX_ALERT_LIMIT:
+        raise AzureMonitorDataError(f"limit debe estar entre 1 y {_MAX_ALERT_LIMIT}.")
+    return limit
 
 
 def _wrap_error(exc: Exception, not_found_message: str) -> AzureMonitorConnectorError:
@@ -159,9 +168,18 @@ class AzureMonitorClient:
             ...     "/subscriptions/.../virtualMachines/mi-vm", "Percentage CPU")
             [{'timestamp': '2026-07-17T10:00:00Z', 'value': 23.5, 'unit': 'Percent'}]
         """
-        resource_id = (resource_id or "").strip()
+        if not isinstance(resource_id, str):
+            raise AzureMonitorDataError(
+                f"resource_id debe ser un string, no {type(resource_id).__name__}."
+            )
+        resource_id = resource_id.strip()
         if not resource_id:
             raise AzureMonitorDataError("resource_id no puede estar vacío.")
+        if not isinstance(aggregation, str) or aggregation not in _VALID_AGGREGATIONS:
+            raise AzureMonitorDataError(
+                f"aggregation={aggregation!r} inválido. "
+                f"Valores permitidos: {sorted(_VALID_AGGREGATIONS)}."
+            )
         now = datetime.now(timezone.utc)
         end_time = end_time or now
         start_time = start_time or (end_time - timedelta(hours=1))
@@ -225,7 +243,7 @@ class AzureMonitorClient:
             >>> client.list_active_alerts()
             [{'name': 'cpu-alta-produccion', 'severity': 'Sev2', 'state': 'New', ...}]
         """
-        limit = max(1, min(int(limit), _MAX_ALERT_LIMIT))
+        limit = _validate_limit(limit)
         client = self._get_alerts_client()
         try:
             alerts = client.alerts.get_all(monitor_condition="Fired", alert_state="New")
